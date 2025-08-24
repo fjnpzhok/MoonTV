@@ -96,6 +96,14 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
   // 是否倒序显示
   const [descending, setDescending] = useState<boolean>(false);
 
+  // 根据 descending 状态计算实际显示的分页索引
+  const displayPage = useMemo(() => {
+    if (descending) {
+      return pageCount - 1 - currentPage;
+    }
+    return currentPage;
+  }, [currentPage, descending, pageCount]);
+
   // 获取视频信息的函数 - 移除 attemptedSources 依赖避免不必要的重新创建
   const getVideoInfo = useCallback(async (source: SearchResult) => {
     const sourceKey = `${source.source}-${source.id}`;
@@ -212,19 +220,27 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
     return Array.from({ length: pageCount }, (_, i) => {
       const start = i * episodesPerPage + 1;
       const end = Math.min(start + episodesPerPage - 1, totalEpisodes);
-      return `${start}-${end}`;
+      return { start, end };
     });
   }, [pageCount, episodesPerPage, totalEpisodes]);
 
-  // 分页标签始终保持升序
-  const categories = categoriesAsc;
+  // 根据 descending 状态决定分页标签的排序和内容
+  const categories = useMemo(() => {
+    if (descending) {
+      // 倒序时，label 也倒序显示
+      return [...categoriesAsc]
+        .reverse()
+        .map(({ start, end }) => `${end}-${start}`);
+    }
+    return categoriesAsc.map(({ start, end }) => `${start}-${end}`);
+  }, [categoriesAsc, descending]);
 
   const categoryContainerRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // 当分页切换时，将激活的分页标签滚动到视口中间
   useEffect(() => {
-    const btn = buttonRefs.current[currentPage];
+    const btn = buttonRefs.current[displayPage];
     const container = categoryContainerRef.current;
     if (btn && container) {
       // 手动计算滚动位置，只滚动分页标签容器
@@ -246,16 +262,24 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
         behavior: 'smooth',
       });
     }
-  }, [currentPage, pageCount]);
+  }, [displayPage, pageCount]);
 
   // 处理换源tab点击，只在点击时才搜索
   const handleSourceTabClick = () => {
     setActiveTab('sources');
   };
 
-  const handleCategoryClick = useCallback((index: number) => {
-    setCurrentPage(index);
-  }, []);
+  const handleCategoryClick = useCallback(
+    (index: number) => {
+      if (descending) {
+        // 在倒序时，需要将显示索引转换为实际索引
+        setCurrentPage(pageCount - 1 - index);
+      } else {
+        setCurrentPage(index);
+      }
+    },
+    [descending, pageCount]
+  );
 
   const handleEpisodeClick = useCallback(
     (episodeNumber: number) => {
@@ -317,7 +341,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
             <div className='flex-1 overflow-x-auto' ref={categoryContainerRef}>
               <div className='flex gap-2 min-w-max'>
                 {categories.map((label, idx) => {
-                  const isActive = idx === currentPage;
+                  const isActive = idx === displayPage;
                   return (
                     <button
                       key={label}
@@ -489,7 +513,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                               </h3>
                               {/* 标题级别的 tooltip - 第一个元素不显示 */}
                               {index !== 0 && (
-                                <div className='absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-gray-800 text-white text-xs rounded-md shadow-lg opacity-0 invisible group-hover/title:opacity-100 group-hover/title:visible transition-all duration-200 ease-out delay-100 whitespace-nowrap z-[9999] pointer-events-none'>
+                                <div className='absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-gray-800 text-white text-xs rounded-md shadow-lg opacity-0 invisible group-hover/title:opacity-100 group-hover/title:visible transition-all duration-200 ease-out delay-100 whitespace-nowrap z-[500] pointer-events-none'>
                                   {source.title}
                                   <div className='absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800'></div>
                                 </div>
@@ -530,12 +554,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                                 }
                               }
 
-                              // 始终显示占位符，确保布局一致且分辨率信息始终可见
-                              return optimizationEnabled ? (
-                                <div className='bg-gray-500/10 dark:bg-gray-400/20 text-gray-500 dark:text-gray-400 px-1.5 py-0 rounded text-xs flex-shrink-0 min-w-[50px] text-center'>
-                                  检测中
-                                </div>
-                              ) : null;
+                              return null;
                             })()}
                           </div>
 
